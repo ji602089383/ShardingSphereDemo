@@ -1,0 +1,178 @@
+server:
+  port: 8080
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+properties:
+  datasource: &dataSourceType
+    type: com.zaxxer.hikari.HikariDataSource
+    driver-class-name: com.mysql.jdbc.Driver
+
+spring:
+  application:
+    name: order
+  shardingsphere:
+    datasource:
+      names: ds0-master, ds1-master, ds2-master,  ds0-salve,  ds1-salve, ds2-salve
+      ds0-master:
+        <<: *dataSourceType
+        jdbc-url: jdbc:mysql://localhost:3306/order-0-master
+        username: jicai
+        password: 123456
+      ds0-salve:
+        <<: *dataSourceType
+        jdbc-url: jdbc:mysql://localhost:3306/order-0-salve
+        username: jicai
+        password: 123456
+      ds1-master:
+        <<: *dataSourceType
+        jdbc-url: jdbc:mysql://localhost:3306/order-1-master
+        username: jicai
+        password: 123456
+      ds1-salve:
+        <<: *dataSourceType
+        jdbc-url: jdbc:mysql://localhost:3306/order-1-salve
+        username: jicai
+        password: 123456
+      ds2-master:
+        <<: *dataSourceType
+        jdbc-url: jdbc:mysql://localhost:3306/order-2-master
+        username: jicai
+        password: 123456
+      ds2-salve:
+        <<: *dataSourceType
+        jdbc-url: jdbc:mysql://localhost:3306/order-2-salve
+        username: jicai
+        password: 123456
+    props:
+      sql-show: true
+      sqlCommentParseEnabled: true
+    rules:
+      readwrite-splitting:
+        data-sources:
+          ds0:
+            static-strategy:
+              write-data-source-name: ds0-master
+              read-data-source-names: ds0-salve
+            load-balancer-name: my-round
+          ds1:
+            static-strategy:
+              write-data-source-name: ds1-master
+              read-data-source-names: ds1-salve
+            load-balancer-name: my-round
+          ds2:
+            static-strategy:
+              write-data-source-name: ds2-master
+              read-data-source-names: ds2-salve
+            load-balancer-name: my-round
+        load-balancers:
+          my-round:
+            type: RANDOM
+      sharding:
+        key-generators:
+          snowflake:
+            type: SNOWFLAKE
+        tables:
+          order:
+            actual-data-nodes: ds$->{0..2}.order_$->{0..2}  # ds$->{0..2}.order_$->{2020..2023}_$->{(1..12).collect{t ->t.toString().padLeft(2,'0')}}
+            database-strategy:
+              hint:
+                sharding-algorithm-name: myTest
+#              standard:
+#                sharding-column: id
+#                sharding-algorithm-name: inline-base-default
+            table-strategy:
+              hint:
+                sharding-algorithm-name: hint-default
+#              standard:
+#                sharding-column: id
+#                sharding-algorithm-name: inline-table-default
+            key-generate-strategy:
+              column: id
+              key-generator-name: snowflake
+#          order_talent:  #相关的表
+#            actual-data-nodes: ds$->{0..1}.order_talent_$->{0..2}
+#            database-strategy:
+#              standard:
+#                sharding-column: order_id
+#                sharding-algorithm-name: inline-base-default  #需要修改算法
+#            table-strategy:
+#              standard:
+#                sharding-column: order_id
+#                sharding-algorithm-name: inline-table-default #需要修改算法
+#            key-generate-strategy:
+#              column: id
+#              key-generator-name: my-key-name
+          binding-tables: #如果A，B，C表是绑定表的关系的话就要放到一起。
+            - order
+         #   - A,B,C 可以配置多个绑定关系
+         #   - order, order_talent 可以配置多个绑定关系
+          broadcast-tables:  #广播表
+            - config
+        # 分片算法
+        sharding-algorithms:
+          inline-table-default: #行表达式
+            type: inline
+            props:
+              algorithm-expression: order_$->{id % 3}  #这是基于long型的 时间的就是 #$->{create_time.format("yyyy")}_$->{create_time.format("MM")}
+              allow-range-query-with-inline-sharding: true
+          inline-base-default: #行表达式
+            type: inline
+            props:
+              algorithm-expression: ds$->{id % 3}  #这是基于long型的 时间的就是 #$->{create_time.format("yyyy")}_$->{create_time.format("MM")}
+              allow-range-query-with-inline-sharding: true
+          complex-inline-default: #复合算法
+            type: COMPLEX_INLINE
+            props:
+              sharding-columns: id,suppliers_id
+              algorithm-expression: order_$->{id % 3}_$->{suppliers_id % 3}
+              allow-range-query-with-inline-sharding: true
+          mode-default: #取模算法
+            type: MOD
+            props:
+              sharding-count: 3
+          hash-mode-default: #哈希取模分片算法
+            type: HASH_MOD
+            props:
+              sharding-count: 3
+          volume-range-default: #基于分片容量的范围分片算法
+            type: VOLUME_RANGE
+            props: #按照以下配置会出现， (-无穷,10) [10,20) [20,30), [30,40), [40,50), [50, +无穷),然后根据你的分片数量循环匹配。比如只设置了3个分片，1，2，3 那么id是 (-无穷,10)落在分片1上，[10,20)落在2上，[20,30)落在3上。 如果你的id是30他就会报错。因为找不到分片，所以谨慎设置。
+              range-lower: 10 #最低值
+              range-upper: 50 #最高值
+              sharding-volume: 10 #每个分片的容量
+          boundary-range-default: #基于分片边界的范围分片算法
+            type: BOUNDARY_RANGE
+            props: #按照以下配置会出现， (-无穷,10) [10,20) [20,100), [100,200), [200, +无穷)
+              sharding-ranges: 10,20,100,200
+          auto-interval-default: #自动时间段分片算法
+            type: AUTO_INTERVAL
+            props: #按照以下配置会出现， (-无穷,2023-05-01) [2023-05-01,2023-06-01) [2023-06-01,2023-07-01) ... [2100-04-01,2100-05-01), [2100-05-01, +无穷)
+              datetime-lower: "2023-05-01 00:00:00"
+              datetime-upper: "2100-05-01 00:00:00"
+              sharding-seconds: 2626560  #单位秒   这里放的是一个月
+          interval-default: #时间范围分片算法
+            type: INTERVAL
+            props: #按照以下配置会出现， (-无穷,2023-05-01) [2023-05-01,2023-06-01) [2023-06-01,2023-07-01) ... [2100-04-01,2100-05-01), [2100-05-01, +无穷)
+              datetime-lower: "2023-05-01 00:00:00"
+              datetime-upper: "2100-05-01 00:00:00"
+              datetime-pattern: "yyyy-MM-dd HH:mm:ss"
+              sharding-suffix-pattern: "yyyy_MM"
+              datetime-interval-amount: "1"
+              datetime-interval-unit: "MONTHS"
+          hint-database-default: #Hint 行表达式分片算法
+            type: HINT_INLINE
+            props:
+              algorithm-expression: ds$->{id % 3}  #这个配置非必选
+          hint-default: #Hint 行表达式分片算法
+            type: HINT_INLINE
+#            props:
+#              algorithm-expression: order  #这个配置非必选 当选择这个表达式时，如果要用到ShardingValue值就必须使用 ${value}来获取。 如果不用这个表达式时，那么就是表名就是order + shardingValue值
+          myTest: #Hint 行表达式分片算法
+            type: CLASS_BASED
+            props:
+              strategy: hint
+              algorithmClassName: com.turing.order.Ao

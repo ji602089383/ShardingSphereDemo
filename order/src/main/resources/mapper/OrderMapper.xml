@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.turing.order.OrderMapper">
+    <!-- [START] Allison 1875 Lot No: PG0806S-B963F8BA (don't modify manually) -->
+        
+    <insert id="insertOrder" >
+        INSERT INTO `order` (id,suppliers_id, order_no,create_time) values(#{id}, #{suppliersId},  #{orderNo}, #{createTime})
+    </insert>
+<!--    /* SHARDINGSPHERE_HINT: order.SHARDING_DATABASE_VALUE=1, order.SHARDING_TABLE_VALUE=1 */-->
+    <select id="get" resultType="com.turing.order.OrderEntity" parameterType="long">
+        SELECT id, order_no AS orderNo
+        FROM `order` where id = #{id}
+    </select>
+    
+    <select id="limit" resultType="com.turing.order.OrderEntity" >
+        SELECT id, order_no AS orderNo
+        FROM `order` where id >= #{id} and #{end} >= id
+    </select>
+</mapper>
